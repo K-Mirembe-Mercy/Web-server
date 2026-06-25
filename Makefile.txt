@@ -1,0 +1,102 @@
+# ─── CedarHTTP Makefile ───────────────────────────────────────────────────────
+
+CC      := gcc
+TARGET  := cedar
+TEST_BIN:= cedar_tests
+SRCDIR  := src
+INCDIR  := include
+OBJDIR  := build
+TESTDIR := tests
+
+SRCS    := $(wildcard $(SRCDIR)/*.c)
+OBJS    := $(patsubst $(SRCDIR)/%.c, $(OBJDIR)/%.o, $(SRCS))
+
+# Object files for tests (everything except main.c)
+TEST_SRCS := $(filter-out $(SRCDIR)/main.c, $(SRCS))
+TEST_OBJS := $(patsubst $(SRCDIR)/%.c, $(OBJDIR)/%.o, $(TEST_SRCS))
+
+CFLAGS_COMMON := \
+    -std=c11 \
+    -I$(INCDIR) \
+    -Wall -Wextra -Wpedantic \
+    -Wshadow -Wformat=2 \
+    -Wstrict-prototypes -Wmissing-prototypes \
+    -Wcast-align -Wpointer-arith \
+    -Wno-unused-parameter
+
+CFLAGS_DEBUG   := $(CFLAGS_COMMON) -O0 -g3 -DDEBUG \
+                   -fsanitize=address,undefined -fno-omit-frame-pointer
+CFLAGS_RELEASE := $(CFLAGS_COMMON) -O2 -DNDEBUG -fstack-protector-strong
+
+LDFLAGS        := -lpthread
+LDFLAGS_DEBUG  := $(LDFLAGS) -fsanitize=address,undefined
+LDFLAGS_RELEASE:= $(LDFLAGS)
+
+# Default: release
+CFLAGS  ?= $(CFLAGS_RELEASE)
+LDFLAGS_LINK ?= $(LDFLAGS_RELEASE)
+
+# ─── Targets ──────────────────────────────────────────────────────────────────
+
+.PHONY: all release debug test clean install uninstall run help
+
+all: release
+
+release: CFLAGS=$(CFLAGS_RELEASE)
+release: LDFLAGS_LINK=$(LDFLAGS_RELEASE)
+release: $(TARGET)
+	@echo "Built release binary: ./$(TARGET)"
+
+debug: CFLAGS=$(CFLAGS_DEBUG)
+debug: LDFLAGS_LINK=$(LDFLAGS_DEBUG)
+debug: $(TARGET)
+	@echo "Built debug binary (ASAN+UBSAN): ./$(TARGET)"
+
+$(TARGET): $(OBJS)
+	$(CC) $(OBJS) -o $@ $(LDFLAGS_LINK)
+
+$(OBJDIR)/%.o: $(SRCDIR)/%.c | $(OBJDIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(OBJDIR):
+	mkdir -p $(OBJDIR)
+
+# ─── Tests ────────────────────────────────────────────────────────────────────
+
+test: CFLAGS=$(CFLAGS_RELEASE)
+test: LDFLAGS_LINK=$(LDFLAGS_RELEASE)
+test: $(TEST_OBJS) | $(OBJDIR)
+	$(CC) $(CFLAGS) $(TESTDIR)/test_all.c $(TEST_OBJS) \
+	    -I$(INCDIR) -o $(TEST_BIN) $(LDFLAGS_LINK)
+	@echo "Running tests..."
+	@./$(TEST_BIN)
+
+# ─── Utility ──────────────────────────────────────────────────────────────────
+
+clean:
+	rm -rf $(OBJDIR) $(TARGET) $(TEST_BIN)
+
+run: release
+	mkdir -p logs
+	./$(TARGET) -p 8080 -r ./static -v
+
+install: release
+	install -Dm755 $(TARGET) /usr/local/bin/$(TARGET)
+	@echo "Installed to /usr/local/bin/$(TARGET)"
+
+uninstall:
+	rm -f /usr/local/bin/$(TARGET)
+
+help:
+	@echo "Targets:"
+	@echo "  make           → release build"
+	@echo "  make debug     → debug build with ASAN/UBSAN"
+	@echo "  make test      → build + run unit tests"
+	@echo "  make run       → build & run on port 8080"
+	@echo "  make clean     → remove build artifacts"
+	@echo "  make install   → install to /usr/local/bin"
+
+# Dependency tracking
+-include $(OBJS:.o=.d)
+$(OBJDIR)/%.d: $(SRCDIR)/%.c | $(OBJDIR)
+	$(CC) $(CFLAGS) -MM -MT $(patsubst $(SRCDIR)/%.c,$(OBJDIR)/%.o,$<) $< -MF $@
