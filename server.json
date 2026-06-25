@@ -1,0 +1,16 @@
+{
+  "host":              "0.0.0.0",
+  "port":              8080,
+  "root_dir":          "./static",
+  "log_file":          "./logs/access.log",
+  "error_log":         "./logs/error.log",
+  "index_file":        "index.html",
+  "directory_listing": true,
+  "keep_alive":        true,
+  "worker_threads":    8,
+  "backlog":           256,
+  "daemon":            false,
+  "pid_file":          "./cedar.pid",
+  "cors_enabled":      false,
+  "cors_origin":       "*"
+}
